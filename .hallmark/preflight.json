@@ -1,7 +1,7 @@
 {
   "date": "2026-07-20",
-  "fonts": ["Geist", "Geist Mono"],
-  "palette": "Dark custom-property palette; standardized to OKLCH tokens",
+  "fonts": ["Lilita One", "Fredoka"],
+  "palette": "Studied mockup palette: near-black paper with cyan, yellow, purple, and lime functional blocks",
   "motion": "No motion library; CSS transitions only",
   "spacing": "Mixed spacing; standardized to a 4-point scale",
   "framework": "Next.js-compatible Vinext with Tailwind CSS v4",
@@ -9,7 +9,7 @@
     "Single-page extraction workbench",
     "SQLite extraction history",
     "PDF upload and provider selection",
-    "Live processing trace",
+    "Live processing trace inside the extraction controls",
     "Split model results and human scoring"
   ]
 }

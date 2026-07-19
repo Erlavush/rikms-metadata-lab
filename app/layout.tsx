@@ -1,20 +1,30 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fredoka, Lilita_One } from "next/font/google";
 import "react-loading-skeleton/dist/skeleton.css";
 import "./globals.css";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const lilitaOne = Lilita_One({
+  variable: "--font-lilita-one",
+  subsets: ["latin"],
+  weight: "400",
+  display: "swap",
+});
+
+const fredoka = Fredoka({
+  variable: "--font-fredoka",
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "RIKMS Metadata Lab",
-  description: "A local, human-reviewed workbench for comparing structured research metadata extraction.",
+  description: "Upload a research paper, watch local AI extract its metadata, and validate every result.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
+    <html lang="en" className={`${lilitaOne.variable} ${fredoka.variable}`}>
+      <body>{children}</body>
     </html>
   );
 }

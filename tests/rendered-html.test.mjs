@@ -21,6 +21,10 @@ test("server-renders the RIKMS Metadata Lab", async () => {
   const html = await response.text();
   assert.match(html, /<title>RIKMS Metadata Lab<\/title>/i);
   assert.match(html, /RIKMS Metadata Lab/);
-  assert.match(html, /Human-reviewed extraction workbench/);
+  assert.match(html, /Model Lane/);
+  assert.match(html, /Extract Metadata/);
+  assert.match(html, /Related Literature/);
+  assert.match(html, /Lilita One/);
+  assert.match(html, /Fredoka/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|Your site is taking shape/i);
 });

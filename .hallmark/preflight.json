@@ -1,0 +1,15 @@
+{
+  "date": "2026-07-20",
+  "fonts": ["Geist", "Geist Mono"],
+  "palette": "Dark custom-property palette; standardized to OKLCH tokens",
+  "motion": "No motion library; CSS transitions only",
+  "spacing": "Mixed spacing; standardized to a 4-point scale",
+  "framework": "Next.js-compatible Vinext with Tailwind CSS v4",
+  "preserved": [
+    "Single-page extraction workbench",
+    "SQLite extraction history",
+    "PDF upload and provider selection",
+    "Live processing trace",
+    "Split model results and human scoring"
+  ]
+}

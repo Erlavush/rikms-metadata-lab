@@ -11,6 +11,8 @@ The lab does **not** publish, approve, or mutate authoritative RIKMS records. Mo
 - Local Ollama support with `qwen3.5:4b` as the default model
 - Optional OpenAI-compatible API model for side-by-side comparison
 - Honest live stages without requesting or displaying hidden chain-of-thought
+- Adaptive skeleton placeholders while history, providers, and metadata fields load
+- A compact Pac-Man activity indicator during queued and running extraction jobs
 - Field-by-field human scoring: correct, partial, or incorrect
 - SQLite extraction history and model provenance
 - API keys, PDF files, and SQLite data excluded from Git
@@ -82,3 +84,7 @@ npm audit
 ```
 
 Use synthetic or explicitly authorized research papers for demonstrations and accuracy testing.
+
+## Loading interface credits
+
+Skeleton placeholders use [`react-loading-skeleton`](https://github.com/dvtng/react-loading-skeleton). The web-native Pac-Man animation is inspired by type 26 from [`NVActivityIndicatorView`](https://github.com/ninjaprox/NVActivityIndicatorView); the original package targets Swift/UIKit, so this project uses a small CSS implementation instead of adding an incompatible iOS dependency.

@@ -10,6 +10,7 @@
   --color-muted: oklch(0.81 0.012 264);
   --color-ink: oklch(0.95 0.008 264);
   --color-accent: oklch(0.72 0.14 266);
+  --color-accent-strong: oklch(0.65 0.17 266);
   --color-accent-soft: oklch(0.22 0.055 266);
   --color-accent-ink: oklch(0.13 0.012 264);
   --color-focus: oklch(0.82 0.13 254);
@@ -19,6 +20,7 @@
   --color-warning-soft: oklch(0.2 0.035 82);
   --color-error: oklch(0.71 0.17 24);
   --color-error-soft: oklch(0.2 0.05 24);
+  --color-shadow: oklch(0.055 0.012 264 / 0.58);
 
   --font-display: var(--font-geist-sans);
   --font-body: var(--font-geist-sans);
@@ -30,7 +32,7 @@
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
   --text-2xl: 1.5rem;
-  --text-display: clamp(2rem, 5.4vw, 3.5rem);
+  --text-display: clamp(2.75rem, 6.6vw, 4.75rem);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -47,6 +49,7 @@
   --rule-thin: 1px;
   --radius-sm: 0.25rem;
   --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
   --radius-round: 999px;
 
   --duration-instant: 80ms;
@@ -57,6 +60,7 @@
 
   --content-wide: 100rem;
   --history-width: 17rem;
-  --topbar-height: 4rem;
+  --topbar-height: 4.5rem;
   --focus-ring: 2px;
+  --shadow-panel: 0 1.5rem 4rem -2.75rem var(--color-shadow);
 }

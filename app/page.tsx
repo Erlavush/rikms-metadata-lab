@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 
 const API_URL = process.env.NEXT_PUBLIC_LAB_API_URL ?? "http://127.0.0.1:8787";
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -49,6 +50,8 @@ const phases = [
   ["completed", "Save result"],
 ] as const;
 
+const skeletonFields = ["Title", "Authors", "Abstract"] as const;
+
 const fieldLabels: Record<string, string> = {
   title: "Title",
   authors: "Authors",
@@ -96,6 +99,18 @@ function formatValue(field: string, value: unknown): string {
   return String(value);
 }
 
+function PacmanIndicator() {
+  return (
+    <div className="pacman-indicator" aria-hidden="true">
+      <span className="pacman-jaw pacman-jaw-top" />
+      <span className="pacman-jaw pacman-jaw-bottom" />
+      <span className="pacman-dot pacman-dot-one" />
+      <span className="pacman-dot pacman-dot-two" />
+      <span className="pacman-dot pacman-dot-three" />
+    </div>
+  );
+}
+
 export default function Home() {
   const [config, setConfig] = useState<LabConfig | null>(null);
   const [history, setHistory] = useState<Extraction[]>([]);
@@ -107,6 +122,7 @@ export default function Home() {
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [evaluationSaved, setEvaluationSaved] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const loadHistory = useCallback(async () => {
     const payload = await api<{ extractions: Extraction[] }>("/api/extractions?limit=25");
@@ -114,15 +130,22 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     Promise.all([
-      api<LabConfig>("/api/config"),
-      api<{ extractions: Extraction[] }>("/api/extractions?limit=25"),
+      api<LabConfig>("/api/config", { signal: controller.signal }),
+      api<{ extractions: Extraction[] }>("/api/extractions?limit=25", { signal: controller.signal }),
     ])
       .then(([nextConfig, nextHistory]) => {
         setConfig(nextConfig);
         setHistory(nextHistory.extractions);
       })
-      .catch((reason: Error) => setError(reason.message));
+      .catch((reason: Error) => {
+        if (reason.name !== "AbortError") setError(reason.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setInitialLoading(false);
+      });
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -222,10 +245,19 @@ export default function Home() {
 
   const resultEntries = active ? (Object.entries(active.results) as Array<[ProviderKey, ProviderResult]>) : [];
   const scoreCoverage = `${Object.keys(scores).length}/${resultEntries.length * Object.keys(fieldLabels).length} fields rated`;
+  const isExtracting = active ? ["queued", "running"].includes(active.status) : false;
+  const activePhase = phases.find(([key]) => key === active?.stage)?.[1] ?? "Prepare extraction";
 
   return (
+    <SkeletonTheme
+      baseColor="var(--color-paper-3)"
+      highlightColor="var(--color-paper-raised)"
+      borderRadius="0.375rem"
+      duration={1.5}
+    >
     <main className="lab-shell">
       <header className="topbar">
+        <div className="brand-monogram" aria-hidden="true">R</div>
         <div className="brand-copy">
           <strong>RIKMS Metadata Lab</strong>
           <span>Human-reviewed extraction workbench</span>
@@ -243,7 +275,19 @@ export default function Home() {
             <span className="count-badge">{history.length}</span>
           </div>
           <div className="history-list">
-            {history.length === 0 ? (
+            {initialLoading ? (
+              <div className="history-skeleton" role="status" aria-label="Loading extraction history">
+                {[0, 1, 2].map((item) => (
+                  <div className="history-skeleton-row" key={item}>
+                    <Skeleton circle width="0.5rem" height="0.5rem" />
+                    <span>
+                      <Skeleton width="72%" />
+                      <Skeleton width="48%" />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : history.length === 0 ? (
               <div className="empty-state">
                 <p>There are no saved extractions yet.</p>
                 <button type="button" onClick={() => document.getElementById("paper-input")?.click()}>
@@ -336,10 +380,10 @@ export default function Home() {
                 <span className="model-radio" aria-hidden="true" />
                 <span>
                   <small>Loopback Ollama</small>
-                  <strong>{config?.providers.ollama.model ?? "qwen3.5:4b"}</strong>
+                  <strong>{config ? config.providers.ollama.model : <Skeleton width="7rem" />}</strong>
                 </span>
                 <span className={`provider-state ${config?.providers.ollama.reachable ? "online" : "offline"}`}>
-                  {config?.providers.ollama.reachable ? "Ready" : "Offline"}
+                  {config ? (config.providers.ollama.reachable ? "Ready" : "Offline") : <Skeleton width="3rem" />}
                 </span>
               </button>
               <button
@@ -354,10 +398,10 @@ export default function Home() {
                 <span className="model-radio" aria-hidden="true" />
                 <span>
                   <small>OpenAI-compatible API</small>
-                  <strong>{config?.providers.api.model ?? "Not configured"}</strong>
+                  <strong>{config ? config.providers.api.model : <Skeleton width="7rem" />}</strong>
                 </span>
                 <span className={`provider-state ${config?.providers.api.configured ? "online" : "offline"}`}>
-                  {config?.providers.api.configured ? "Configured" : ".env needed"}
+                  {config ? (config.providers.api.configured ? "Configured" : ".env needed") : <Skeleton width="4rem" />}
                 </span>
               </button>
             </div>
@@ -368,12 +412,12 @@ export default function Home() {
               </div>
               <button
                 className="extract-button"
-                data-state={submitting ? "loading" : !file ? "disabled" : "ready"}
+                data-state={submitting || isExtracting ? "loading" : !file ? "disabled" : "ready"}
                 type="button"
-                disabled={!file || submitting}
+                disabled={!file || submitting || isExtracting}
                 onClick={() => void startExtraction()}
               >
-                {submitting ? "Starting extraction…" : "Extract metadata"}
+                {submitting ? "Starting extraction…" : isExtracting ? "Extraction in progress" : "Extract metadata"}
               </button>
             </div>
           </section>
@@ -388,6 +432,15 @@ export default function Home() {
               <div className="progress-track" aria-label={`${active.progress}% complete`}>
                 <span style={{ width: `${active.progress}%` }} />
               </div>
+              {isExtracting ? (
+                <div className="extraction-activity" role="status" aria-live="polite">
+                  <PacmanIndicator />
+                  <span>
+                    <strong>{activePhase}</strong>
+                    <small>Qwen is preparing reviewable metadata · {active.progress}%</small>
+                  </span>
+                </div>
+              ) : null}
               <div className="phase-grid">
                 {phases.map(([key, label]) => {
                   const activeIndex = phases.findIndex(([phase]) => phase === active.stage);
@@ -409,6 +462,19 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              {isExtracting ? (
+                <div className="metadata-skeleton" role="status" aria-label="Preparing metadata fields">
+                  {skeletonFields.map((label) => (
+                    <div className="metadata-skeleton-row" key={label}>
+                      <span>{label}</span>
+                      <div>
+                        <Skeleton width="46%" />
+                        <Skeleton count={label === "Abstract" ? 2 : 1} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {active.error ? <div className="run-warning">{active.error}</div> : null}
             </section>
           ) : null}
@@ -495,5 +561,6 @@ export default function Home() {
         </section>
       </div>
     </main>
+    </SkeletonTheme>
   );
 }

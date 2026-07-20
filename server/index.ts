@@ -117,6 +117,8 @@ app.post("/api/extractions", upload.single("paper"), (request, response, next) =
       return response.status(422).json({ error: "Configure AI_API_KEY and AI_MODEL before selecting the API comparison model." });
     }
 
+    const ollamaModel = request.body.ollamaModel ? String(request.body.ollamaModel).trim() : undefined;
+
     const bytes = readFileSync(request.file.path);
     const id = randomUUID();
     database.insert({
@@ -127,7 +129,7 @@ app.post("/api/extractions", upload.single("paper"), (request, response, next) =
       sha256: createHash("sha256").update(bytes).digest("hex"),
       selectedProviders: providers,
     });
-    setImmediate(() => void processExtraction(id, providers));
+    setImmediate(() => void processExtraction(id, providers, ollamaModel));
     response.status(202).json(database.get(id));
   } catch (error) {
     if (request.file && existsSync(request.file.path)) unlinkSync(request.file.path);
@@ -135,7 +137,7 @@ app.post("/api/extractions", upload.single("paper"), (request, response, next) =
   }
 });
 
-async function processExtraction(id: string, providers: ProviderKey[]): Promise<void> {
+async function processExtraction(id: string, providers: ProviderKey[], ollamaModelOverride?: string): Promise<void> {
   try {
     const filePath = database.getPrivatePath(id);
     if (!filePath) throw new Error("The private PDF source could not be resolved.");
@@ -150,7 +152,7 @@ async function processExtraction(id: string, providers: ProviderKey[]): Promise<
     database.appendEvent(id, "running_models", `Running ${providers.length} selected model${providers.length === 1 ? "" : "s"} with thinking disabled`);
 
     const jobs = providers.map(async (provider) => {
-      const result = provider === "ollama" ? await runOllama(text, config) : await runApiModel(text, config);
+      const result = provider === "ollama" ? await runOllama(text, config, ollamaModelOverride) : await runApiModel(text, config);
       database.appendEvent(id, "model_complete", `${result.model} returned schema-constrained metadata`);
       return result;
     });

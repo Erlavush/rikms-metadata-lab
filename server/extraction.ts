@@ -155,14 +155,15 @@ function parseMetadata(content: unknown): RikmsMetadata {
   return rikmsMetadataValidator.parse(decoded);
 }
 
-export async function runOllama(text: string, config: LabConfig): Promise<ProviderResult> {
+export async function runOllama(text: string, config: LabConfig, overrideModel?: string): Promise<ProviderResult> {
   const started = performance.now();
+  const modelToUse = (overrideModel ?? config.ollamaModel).trim();
   const response = await fetch(`${config.ollamaBaseUrl}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/json" },
     signal: AbortSignal.timeout(config.timeoutMs),
     body: JSON.stringify({
-      model: config.ollamaModel,
+      model: modelToUse,
       stream: false,
       think: false,
       keep_alive: config.ollamaKeepAlive,
@@ -182,7 +183,7 @@ export async function runOllama(text: string, config: LabConfig): Promise<Provid
   };
   return {
     provider: "ollama",
-    model: config.ollamaModel,
+    model: modelToUse,
     metadata: parseMetadata(payload.message?.content),
     inputTokens: payload.prompt_eval_count ?? 0,
     outputTokens: payload.eval_count ?? 0,

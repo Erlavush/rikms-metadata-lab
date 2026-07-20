@@ -240,6 +240,7 @@ export default function Home() {
   const [history, setHistory] = useState<Extraction[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [providers, setProviders] = useState<ProviderKey[]>(["ollama"]);
+  const [selectedOllamaModel, setSelectedOllamaModel] = useState<string>("qwen3.5:4b");
   const [active, setActive] = useState<Extraction | null>(null);
   const [scores, setScores] = useState<Record<string, Rating>>({});
   const [error, setError] = useState<string | null>(null);
@@ -262,6 +263,9 @@ export default function Home() {
       .then(([nextConfig, nextHistory]) => {
         setConfig(nextConfig);
         setHistory(nextHistory.extractions);
+        if (nextConfig.providers.ollama.model) {
+          setSelectedOllamaModel(nextConfig.providers.ollama.model);
+        }
       })
       .catch((reason: Error) => {
         if (reason.name !== "AbortError") setError(reason.message);
@@ -320,6 +324,7 @@ export default function Home() {
       const body = new FormData();
       body.append("paper", file);
       body.append("providers", JSON.stringify(providers));
+      body.append("ollamaModel", selectedOllamaModel);
       const extraction = await api<Extraction>("/api/extractions", { method: "POST", body });
       setActive(extraction);
       setScores({});
@@ -421,15 +426,49 @@ export default function Home() {
 
           <section className="model-lane" aria-labelledby="model-lane-title">
             <h2 id="model-lane-title">Model Lane</h2>
-            <button
-              className="model-choice"
-              type="button"
-              aria-pressed={providers.includes("ollama")}
-              onClick={() => toggleProvider("ollama")}
-            >
-              <span className="model-checkbox" aria-hidden="true">{providers.includes("ollama") ? "✓" : ""}</span>
-              <span>{config?.providers.ollama.model ?? "Qwen 3.5 4b"}</span>
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <button
+                className="model-choice"
+                type="button"
+                aria-pressed={providers.includes("ollama")}
+                onClick={() => toggleProvider("ollama")}
+              >
+                <span className="model-checkbox" aria-hidden="true">{providers.includes("ollama") ? "✓" : ""}</span>
+                <span>Ollama (Local Lane)</span>
+              </button>
+              {providers.includes("ollama") && (
+                <div style={{ paddingLeft: '1.75rem', display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                  <label htmlFor="ollama-model-select" style={{ fontSize: '0.75rem', fontWeight: 650, opacity: 0.85, textTransform: 'uppercase', letterSpacing: '0.02em' }}>Select Model</label>
+                  <select
+                    id="ollama-model-select"
+                    value={selectedOllamaModel}
+                    onChange={(e) => setSelectedOllamaModel(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '6px 12px',
+                      borderRadius: 'var(--radius-line)',
+                      border: 'var(--rule-thin) solid var(--color-ink)',
+                      background: 'var(--color-yellow)',
+                      color: 'var(--color-ink)',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontFamily: 'inherit',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="qwen3.5:4b">qwen3.5:4b (Default)</option>
+                    <option value="gemma3:4b">gemma3:4b</option>
+                    <option value="gemma2:2b">gemma2:2b</option>
+                    <option value="gemma2:latest">gemma2:latest</option>
+                    {config?.providers.ollama.model && 
+                     !["qwen3.5:4b", "gemma3:4b", "gemma2:2b", "gemma2:latest"].includes(config.providers.ollama.model) && (
+                      <option value={config.providers.ollama.model}>{config.providers.ollama.model}</option>
+                    )}
+                  </select>
+                </div>
+              )}
+            </div>
             <button
               className="model-choice"
               type="button"
@@ -465,7 +504,11 @@ export default function Home() {
               ) : active.status === "completed" ? (
               <>
                 <strong>Metadata ready</strong>
-                <span>{resultEntries.map(([, result]) => result.model).join(" + ")}</span>
+                {resultEntries.map(([, result]) => (
+                  <span key={result.model}>
+                    {result.model} (took {(result.durationMs / 1000).toFixed(1)}s)
+                  </span>
+                ))}
               </>
               ) : active.status === "failed" ? (
               <>
@@ -497,17 +540,24 @@ export default function Home() {
                   <span>Your completed extractions will appear here.</span>
                 </div>
               ) : (
-                history.map((item) => (
-                  <button
-                    className={`history-item ${active?.id === item.id ? "is-active" : ""}`}
-                    key={item.id}
-                    type="button"
-                    onClick={() => void openHistory(item.id)}
-                  >
-                    <strong>{item.fileName}</strong>
-                    <span>{item.status} · {new Date(item.createdAt).toLocaleDateString()}</span>
-                  </button>
-                ))
+                history.map((item) => {
+                  const modelsList = item.results && Object.keys(item.results).length > 0
+                    ? Object.values(item.results)
+                        .map((res: any) => `${res.model} (${(res.durationMs / 1000).toFixed(1)}s)`)
+                        .join(" + ")
+                    : item.status;
+                  return (
+                    <button
+                      className={`history-item ${active?.id === item.id ? "is-active" : ""}`}
+                      key={item.id}
+                      type="button"
+                      onClick={() => void openHistory(item.id)}
+                    >
+                      <strong>{item.fileName}</strong>
+                      <span>{modelsList} · {new Date(item.createdAt).toLocaleDateString()}</span>
+                    </button>
+                  );
+                })
               )}
             </div>
           </section>

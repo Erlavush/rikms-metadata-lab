@@ -1,5 +1,5 @@
 # RIKMS Metadata Lab
-
+<img width="1083" height="954" alt="image" src="https://github.com/user-attachments/assets/61937f77-5bb9-4270-b3b4-962a2cf22b5a" />
 RIKMS Metadata Lab is a private, local-first workspace for extracting reviewable metadata from research PDFs. It combines page-aware parsing, optional OCR and scholarly parsers, a selected local Ollama model, strict validation, exact page evidence, and field-by-field human review.
 
 The application produces **candidates, not authoritative facts**. A run is not complete until a person reviews every generated field. It does not publish to or modify an official RIKMS system.

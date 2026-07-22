@@ -1,238 +1,46 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import { SkeletonTheme } from "react-loading-skeleton";
+import { ControlRail } from "./components/control-rail";
+import { EvidenceViewer } from "./components/evidence-viewer";
+import { FieldCard } from "./components/field-card";
+import { RunSummary } from "./components/run-summary";
+import { metadataColumns } from "./metadata";
+import type { EvidenceSelection, Extraction, LabConfig, ProviderKey, Rating, ReviewAction } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_LAB_API_URL ?? "http://127.0.0.1:8787";
-const MAX_BYTES = 25 * 1024 * 1024;
+const CONFIGURED_API_URL = process.env.NEXT_PUBLIC_LAB_API_URL?.replace(/\/$/, "");
 
-type ProviderKey = "ollama" | "api";
-type Rating = "correct" | "partial" | "incorrect";
-
-type ProviderResult = {
-  provider: ProviderKey;
-  model: string;
-  metadata: Record<string, unknown>;
-  inputTokens: number;
-  outputTokens: number;
-  durationMs: number;
-  estimatedCostUsd: number | null;
-};
-
-type Extraction = {
-  id: string;
-  fileName: string;
-  fileSize: number;
-  sha256: string;
-  status: "queued" | "running" | "completed" | "failed";
-  stage: string;
-  progress: number;
-  extractionMethod: string | null;
-  selectedProviders: ProviderKey[];
-  results: Partial<Record<ProviderKey, ProviderResult>>;
-  scores: Record<string, Rating>;
-  events: Array<{ stage: string; message: string; at: string }>;
-  error: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LabConfig = {
-  maxUploadMb: number;
-  providers: Record<ProviderKey, { configured: boolean; reachable: boolean | null; model: string }>;
-};
-
-type FieldDefinition = {
-  key: string;
-  label: string;
-  order: number;
-  shape: "short" | "medium" | "tall" | "wide";
-  widths: number[];
-};
-
-const phases = [
-  ["validating", "Validating PDF"],
-  ["extracting_text", "Reading the paper"],
-  ["running_models", "Qwen is extracting metadata"],
-  ["validating_schema", "Checking the RIKMS schema"],
-  ["completed", "Metadata ready"],
-] as const;
-
-const metadataFields: FieldDefinition[] = [
-  { key: "title", label: "Title", order: 0, shape: "short", widths: [78, 92, 74, 76] },
-  { key: "authors", label: "Authors", order: 1, shape: "short", widths: [80, 94, 76, 78] },
-  { key: "abstract", label: "Abstract", order: 2, shape: "tall", widths: [70, 84, 68, 70, 68, 82, 64, 66] },
-  { key: "keywords", label: "Keywords", order: 3, shape: "medium", widths: [76, 90, 72, 75] },
-  { key: "methodology", label: "Methodology", order: 4, shape: "wide", widths: [78, 92, 74, 76] },
-  { key: "review_of_related_literature", label: "Related Literature", order: 5, shape: "tall", widths: [82, 90, 68, 78, 72] },
-  { key: "theoretical_framework", label: "Theoretical Framework", order: 6, shape: "medium", widths: [74, 88, 70, 76] },
-  { key: "results_and_discussion", label: "Results & Discussion", order: 7, shape: "tall", widths: [88, 76, 92, 68, 80] },
-  { key: "executive_summary", label: "Executive Summary", order: 8, shape: "medium", widths: [76, 92, 70, 84] },
-  { key: "recommendations", label: "Recommendations", order: 9, shape: "medium", widths: [84, 72, 90, 68] },
-  { key: "doi", label: "DOI", order: 10, shape: "short", widths: [74] },
-  { key: "category", label: "Category", order: 11, shape: "short", widths: [68] },
-  { key: "suggested_sdgs", label: "Suggested SDGs", order: 12, shape: "medium", widths: [82, 70, 88] },
-  { key: "evidence_pages", label: "Evidence Pages", order: 13, shape: "short", widths: [72] },
-  { key: "overall_confidence", label: "Model Confidence", order: 14, shape: "short", widths: [58] },
-];
-
-const metadataColumns = [
-  metadataFields.filter((field) => field.order % 2 === 0),
-  metadataFields.filter((field) => field.order % 2 === 1),
-];
-
-const ratingOptions: Array<{ value: Rating; label: string; symbol: string }> = [
-  { value: "correct", label: "Correct", symbol: "✓" },
-  { value: "partial", label: "Partly correct", symbol: "~" },
-  { value: "incorrect", label: "Incorrect", symbol: "×" },
-];
+function apiUrl(): string {
+  if (typeof window !== "undefined") {
+    const browserHostname = window.location.hostname.replace(/^\[|\]$/g, "");
+    if (CONFIGURED_API_URL) {
+      try {
+        const configured = new URL(CONFIGURED_API_URL);
+        const configuredHostname = configured.hostname.replace(/^\[|\]$/g, "");
+        const loopback = new Set(["127.0.0.1", "localhost", "::1"]);
+        if (loopback.has(configuredHostname) && loopback.has(browserHostname)) {
+          configured.hostname = browserHostname;
+          return configured.toString().replace(/\/$/, "");
+        }
+      } catch {
+        // The server-side request will surface an invalid explicit URL clearly.
+      }
+      return CONFIGURED_API_URL;
+    }
+    const host = browserHostname.includes(":") ? `[${browserHostname}]` : browserHostname;
+    return `${window.location.protocol}//${host}:8787`;
+  }
+  return CONFIGURED_API_URL ?? "http://127.0.0.1:8787";
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
-  const payload = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? `Request failed with HTTP ${response.status}.`);
+  const response = await fetch(`${apiUrl()}${path}`, init);
+  const contentType = response.headers.get("content-type") ?? "";
+  const payload = contentType.includes("application/json") ? await response.json() as T & { error?: string } : null;
+  if (!response.ok) throw new Error(payload?.error ?? `Request failed with HTTP ${response.status}.`);
+  if (!payload) throw new Error("The local API returned an unexpected response.");
   return payload;
-}
-
-function formatBytes(bytes: number): string {
-  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`;
-}
-
-function formatValue(field: string, value: unknown): string {
-  if (field === "overall_confidence" && typeof value === "number") return `${Math.round(value * 100)}%`;
-  if (field === "suggested_sdgs" && Array.isArray(value)) {
-    return value.length
-      ? value
-          .map((item) => {
-            const sdg = item as { number?: number; reason?: string; confidence?: number };
-            return `SDG ${sdg.number} — ${sdg.reason || "No reason"} (${Math.round((sdg.confidence ?? 0) * 100)}%)`;
-          })
-          .join("\n")
-      : "Not found";
-  }
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "Not found";
-  if (value === null || value === undefined || value === "") return "Not found";
-  if (typeof value === "object") return JSON.stringify(value, null, 2);
-  return String(value);
-}
-
-function UploadIcon() {
-  return (
-    <svg className="upload-icon" viewBox="0 0 96 96" aria-hidden="true">
-      <path d="M48 67V16M48 16 29 35M48 16l19 19" />
-      <path d="M18 65v9c0 8 6 14 14 14h32c8 0 14-6 14-14v-9" />
-    </svg>
-  );
-}
-
-function LoadingSpinner() {
-  return <span className="button-spinner" aria-hidden="true" />;
-}
-
-function PlaceholderLines({ widths }: { widths: number[] }) {
-  return (
-    <div className="placeholder-lines" aria-hidden="true">
-      {widths.map((width, index) => (
-        <span key={`${width}-${index}`} style={{ inlineSize: `${width}%` }} />
-      ))}
-    </div>
-  );
-}
-
-function ShimmerLines({ widths }: { widths: number[] }) {
-  return (
-    <div className="shimmer-lines" aria-hidden="true">
-      {widths.map((width, index) => (
-        <Skeleton
-          key={`${width}-${index}`}
-          width={`${width}%`}
-          height="var(--skeleton-line-height)"
-        />
-      ))}
-    </div>
-  );
-}
-
-function RatingRail({
-  field,
-  provider,
-  model,
-  scores,
-  onRate,
-}: {
-  field: FieldDefinition;
-  provider: ProviderKey;
-  model: string;
-  scores: Record<string, Rating>;
-  onRate: (key: string, rating: Rating) => void;
-}) {
-  const scoreKey = `${provider}.${field.key}`;
-  return (
-    <div className="rating-rail" aria-label={`Rate ${field.label} from ${model}`}>
-      {ratingOptions.map((option) => (
-        <button
-          className={`rating-dot rating-${option.value}`}
-          data-selected={scores[scoreKey] === option.value}
-          key={option.value}
-          type="button"
-          aria-label={`${option.label}: ${field.label} from ${model}`}
-          aria-pressed={scores[scoreKey] === option.value}
-          title={option.label}
-          onClick={() => onRate(scoreKey, option.value)}
-        >
-          <span aria-hidden="true">{option.symbol}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function MetadataCard({
-  field,
-  busy,
-  results,
-  scores,
-  onRate,
-}: {
-  field: FieldDefinition;
-  busy: boolean;
-  results: Array<[ProviderKey, ProviderResult]>;
-  scores: Record<string, Rating>;
-  onRate: (key: string, rating: Rating) => void;
-}) {
-  const hasResults = results.length > 0;
-  const singleResultRating =
-    results.length === 1 ? scores[`${results[0][0]}.${field.key}`] : undefined;
-  return (
-    <section
-      className={`metadata-block metadata-${field.shape}${field.order > 4 ? " metadata-secondary" : ""}`}
-      style={{ order: field.order }}
-      aria-labelledby={`field-${field.key}`}
-    >
-      <h2 id={`field-${field.key}`}>{field.label}</h2>
-      <div
-        className={`metadata-card ${busy ? "is-loading" : !hasResults ? "is-placeholder" : ""} ${hasResults && results.length > 1 ? "is-comparison" : ""} ${singleResultRating ? `is-${singleResultRating}` : ""}`}
-        aria-busy={busy}
-      >
-        {busy ? (
-          <ShimmerLines widths={field.widths} />
-        ) : hasResults ? (
-          results.map(([provider, result]) => (
-            <div
-              className={`provider-result ${results.length > 1 && scores[`${provider}.${field.key}`] ? `is-${scores[`${provider}.${field.key}`]}` : ""}`}
-              key={provider}
-            >
-              {results.length > 1 ? <span className="provider-label">{result.model}</span> : null}
-              <p>{formatValue(field.key, result.metadata[field.key])}</p>
-              <RatingRail field={field} provider={provider} model={result.model} scores={scores} onRate={onRate} />
-            </div>
-          ))
-        ) : (
-          <PlaceholderLines widths={field.widths} />
-        )}
-      </div>
-    </section>
-  );
 }
 
 export default function Home() {
@@ -240,16 +48,21 @@ export default function Home() {
   const [history, setHistory] = useState<Extraction[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [providers, setProviders] = useState<ProviderKey[]>(["ollama"]);
+  const [ollamaModel, setOllamaModel] = useState("");
   const [active, setActive] = useState<Extraction | null>(null);
-  const [scores, setScores] = useState<Record<string, Rating>>({});
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [evaluationSaved, setEvaluationSaved] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [evidenceSelection, setEvidenceSelection] = useState<EvidenceSelection | null>(null);
+
+  const receiveConfig = useCallback((nextConfig: LabConfig) => {
+    setConfig(nextConfig);
+    setOllamaModel((current) => nextConfig.providers.ollama.models.includes(current) ? current : nextConfig.providers.ollama.model);
+  }, []);
 
   const loadHistory = useCallback(async () => {
-    const payload = await api<{ extractions: Extraction[] }>("/api/extractions?limit=25");
+    const payload = await api<{ extractions: Extraction[] }>("/api/extractions?limit=40");
     setHistory(payload.extractions);
   }, []);
 
@@ -257,10 +70,10 @@ export default function Home() {
     const controller = new AbortController();
     Promise.all([
       api<LabConfig>("/api/config", { signal: controller.signal }),
-      api<{ extractions: Extraction[] }>("/api/extractions?limit=25", { signal: controller.signal }),
+      api<{ extractions: Extraction[] }>("/api/extractions?limit=40", { signal: controller.signal }),
     ])
       .then(([nextConfig, nextHistory]) => {
-        setConfig(nextConfig);
+        receiveConfig(nextConfig);
         setHistory(nextHistory.extractions);
       })
       .catch((reason: Error) => {
@@ -270,7 +83,20 @@ export default function Home() {
         if (!controller.signal.aborted) setInitialLoading(false);
       });
     return () => controller.abort();
-  }, []);
+  }, [receiveConfig]);
+
+  useEffect(() => {
+    let activeRequest = true;
+    const timer = window.setInterval(() => {
+      void api<LabConfig>("/api/config")
+        .then((nextConfig) => { if (activeRequest) receiveConfig(nextConfig); })
+        .catch(() => undefined);
+    }, 15_000);
+    return () => {
+      activeRequest = false;
+      window.clearInterval(timer);
+    };
+  }, [receiveConfig]);
 
   useEffect(() => {
     if (!active || !["queued", "running"].includes(active.status)) return;
@@ -278,8 +104,7 @@ export default function Home() {
       try {
         const next = await api<Extraction>(`/api/extractions/${active.id}`);
         setActive(next);
-        setScores(next.scores ?? {});
-        if (["completed", "failed"].includes(next.status)) await loadHistory();
+        if (!["queued", "running"].includes(next.status)) await loadHistory();
       } catch (reason) {
         setError(reason instanceof Error ? reason.message : "Could not refresh extraction status.");
       }
@@ -287,46 +112,64 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [active, loadHistory]);
 
+  useEffect(() => {
+    if (!evidenceSelection) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEvidenceSelection(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [evidenceSelection]);
+
   const chooseFile = (next: File | null) => {
     setError(null);
-    if (!next) return setFile(null);
+    if (!next) {
+      setFile(null);
+      return;
+    }
     if (!next.name.toLowerCase().endsWith(".pdf") || !["application/pdf", ""].includes(next.type)) {
       setFile(null);
-      return setError("That file is not a valid PDF. Choose a PDF document.");
+      setError("That file is not a valid PDF. Choose a PDF document.");
+      return;
     }
-    if (next.size > MAX_BYTES) {
+    const maximumBytes = (config?.maxUploadMb ?? 25) * 1024 * 1024;
+    if (next.size > maximumBytes) {
       setFile(null);
-      return setError("That PDF is larger than 25 MB. Choose a smaller file.");
+      setError(`That PDF is larger than ${config?.maxUploadMb ?? 25} MB.`);
+      return;
     }
     setFile(next);
   };
 
   const toggleProvider = (provider: ProviderKey) => {
     if (provider === "api" && !config?.providers.api.configured) return;
-    setProviders((current) =>
-      current.includes(provider)
-        ? current.length === 1
-          ? current
-          : current.filter((item) => item !== provider)
-        : [...current, provider],
-    );
+    setProviders((current) => current.includes(provider)
+      ? current.length === 1 ? current : current.filter((item) => item !== provider)
+      : [...current, provider]);
   };
 
   const startExtraction = async () => {
-    if (!file) return setError("Choose a PDF before starting extraction.");
+    if (!file) {
+      setError("Choose a PDF before starting extraction.");
+      return;
+    }
+    if (providers.includes("ollama") && config && (!config.providers.ollama.reachable || !config.providers.ollama.models.includes(ollamaModel))) {
+      setError("No installed local Ollama model is selected. Start Ollama, install a model, or choose one from this PC.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    setEvidenceSelection(null);
     try {
       const body = new FormData();
       body.append("paper", file);
       body.append("providers", JSON.stringify(providers));
+      body.append("ollamaModel", ollamaModel);
       const extraction = await api<Extraction>("/api/extractions", { method: "POST", body });
       setActive(extraction);
-      setScores({});
-      setEvaluationSaved(false);
       await loadHistory();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The extraction could not start. Check the model and try again.");
+      setError(reason instanceof Error ? reason.message : "The extraction could not start.");
     } finally {
       setSubmitting(false);
     }
@@ -334,49 +177,83 @@ export default function Home() {
 
   const openHistory = async (id: string) => {
     setError(null);
+    setEvidenceSelection(null);
     try {
-      const extraction = await api<Extraction>(`/api/extractions/${id}`);
-      setActive(extraction);
-      setScores(extraction.scores ?? {});
-      setEvaluationSaved(false);
+      setActive(await api<Extraction>(`/api/extractions/${id}`));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "That saved extraction could not be opened.");
     }
   };
 
-  const saveScores = async () => {
+  const reprocess = async () => {
     if (!active) return;
+    setSubmitting(true);
+    setError(null);
+    setEvidenceSelection(null);
     try {
-      const next = await api<Extraction>(`/api/extractions/${active.id}/scores`, {
-        method: "PATCH",
+      const next = await api<Extraction>(`/api/extractions/${active.id}/reprocess`, {
+        method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ scores }),
+        body: JSON.stringify({ providers, ollamaModel }),
       });
       setActive(next);
-      setEvaluationSaved(true);
       await loadHistory();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The ratings could not be saved. Try again.");
+      setError(reason instanceof Error ? reason.message : "The document could not be reprocessed.");
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const scoreSummary = useMemo(() => {
-    const values = Object.values(scores);
-    if (!values.length) return null;
-    const points = values.reduce((total, value) => total + (value === "correct" ? 1 : value === "partial" ? 0.5 : 0), 0);
-    return Math.round((points / values.length) * 100);
-  }, [scores]);
-
-  const resultEntries = active ? (Object.entries(active.results) as Array<[ProviderKey, ProviderResult]>) : [];
-  const isExtracting = active ? ["queued", "running"].includes(active.status) : false;
-  const isBusy = submitting || isExtracting;
-  const activePhase = phases.find(([key]) => key === active?.stage)?.[1] ?? "Preparing extraction";
-  const latestEvent = active?.events.at(-1)?.message;
-
-  const rateField = (key: string, rating: Rating) => {
-    setEvaluationSaved(false);
-    setScores((current) => ({ ...current, [key]: rating }));
+  const deleteExtraction = async () => {
+    if (!active || !window.confirm(`Permanently delete this extraction run and its private artifacts?\n\n${active.fileName}`)) return;
+    setSubmitting(true);
+    setError(null);
+    setEvidenceSelection(null);
+    try {
+      await api<{ deleted: boolean }>(`/api/extractions/${active.id}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      setActive(null);
+      await loadHistory();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The extraction could not be deleted.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const saveReview = async (provider: ProviderKey, field: string, action: ReviewAction, correctedValue?: unknown) => {
+    if (!active) return;
+    const next = await api<Extraction>(`/api/extractions/${active.id}/reviews`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ provider, field, action, correctedValue, reviewer: "local-reviewer", notes: "" }),
+    });
+    setActive(next);
+    setHistory((current) => current.map((item) => item.id === next.id ? next : item));
+  };
+
+  const saveRating = async (provider: ProviderKey, field: string, rating: Rating) => {
+    if (!active) return;
+    const next = await api<Extraction>(`/api/extractions/${active.id}/scores`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scores: { [`${provider}.${field}`]: rating } }),
+    });
+    setActive(next);
+    setHistory((current) => current.map((item) => item.id === next.id ? next : item));
+  };
+
+  const resultEntries = active ? Object.entries(active.results) as Array<[ProviderKey, NonNullable<Extraction["results"][ProviderKey]>]> : [];
+  const isBusy = submitting || Boolean(active && ["queued", "running"].includes(active.status));
+  const latestActions = useMemo(() => {
+    const actions: Record<string, ReviewAction> = {};
+    active?.reviews.forEach((review) => { actions[`${review.provider}.${review.field}`] = review.action; });
+    return actions;
+  }, [active]);
 
   return (
     <SkeletonTheme
@@ -388,166 +265,55 @@ export default function Home() {
     >
       <main className="lab-canvas">
         <h1 className="visually-hidden">RIKMS Metadata Lab</h1>
-
-        <aside className="control-rail" aria-label="Metadata extraction controls">
-          <label
-            className={`upload-tile ${dragging ? "is-dragging" : ""} ${file ? "has-file" : ""}`}
-            data-state={error ? "error" : file ? "success" : "default"}
-            onDragEnter={() => setDragging(true)}
-            onDragLeave={() => setDragging(false)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragging(false);
-              chooseFile(event.dataTransfer.files[0] ?? null);
-            }}
-          >
-            <input
-              id="paper-input"
-              type="file"
-              accept="application/pdf,.pdf"
-              onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
-            />
-            <UploadIcon />
-            {file ? (
-              <span className="upload-copy file-copy">
-                <strong>{file.name}</strong>
-                <small>{formatBytes(file.size)} · click to replace</small>
-              </span>
-            ) : (
-              <span className="upload-copy">Drop a paper here<br />or click to choose</span>
-            )}
-          </label>
-
-          <section className="model-lane" aria-labelledby="model-lane-title">
-            <h2 id="model-lane-title">Model Lane</h2>
-            <button
-              className="model-choice"
-              type="button"
-              aria-pressed={providers.includes("ollama")}
-              onClick={() => toggleProvider("ollama")}
-            >
-              <span className="model-checkbox" aria-hidden="true">{providers.includes("ollama") ? "✓" : ""}</span>
-              <span>{config?.providers.ollama.model ?? "Qwen 3.5 4b"}</span>
-            </button>
-            <button
-              className="model-choice"
-              type="button"
-              aria-pressed={providers.includes("api")}
-              disabled={!config?.providers.api.configured}
-              title={!config?.providers.api.configured ? "Add API settings to .env to enable this model." : undefined}
-              onClick={() => toggleProvider("api")}
-            >
-              <span className="model-checkbox" aria-hidden="true">{providers.includes("api") ? "✓" : ""}</span>
-              <span>{config?.providers.api.configured ? config.providers.api.model : "API (.env)"}</span>
-            </button>
-          </section>
-
-          <button
-            className="extract-button"
-            data-state={isBusy ? "loading" : file ? "ready" : "default"}
-            type="button"
-            disabled={isBusy}
-            onClick={() => void startExtraction()}
-          >
-            {isBusy ? <LoadingSpinner /> : null}
-            <span>{isBusy ? "Extracting…" : "Extract Metadata"}</span>
-          </button>
-
-          {active ? (
-            <div className="activity-status" role="status" aria-live="polite">
-              {isBusy ? (
-              <>
-                <strong>{activePhase}</strong>
-                <span>{latestEvent ?? "The model is preparing reviewable metadata."}</span>
-                <span>{active?.progress ?? 0}% complete</span>
-              </>
-              ) : active.status === "completed" ? (
-              <>
-                <strong>Metadata ready</strong>
-                <span>{resultEntries.map(([, result]) => result.model).join(" + ")}</span>
-              </>
-              ) : active.status === "failed" ? (
-              <>
-                <strong>Extraction stopped</strong>
-                <span>{active.error ?? "Open the model and try again."}</span>
-              </>
-              ) : null}
-            </div>
-          ) : null}
-
-          {error ? <div className="error-note" role="alert">{error}</div> : null}
-
-          <section className="history-tile" aria-labelledby="history-title">
-            <div className="history-heading">
-              <h2 id="history-title">History</h2>
-              <span>{history.length}</span>
-            </div>
-            <div className="history-list">
-              {initialLoading ? (
-                [0, 1, 2].map((item) => (
-                  <div className="history-loading" key={item}>
-                    <Skeleton width="78%" />
-                    <Skeleton width="46%" />
-                  </div>
-                ))
-              ) : history.length === 0 ? (
-                <div className="history-empty">
-                  <strong>No papers yet.</strong>
-                  <span>Your completed extractions will appear here.</span>
-                </div>
-              ) : (
-                history.map((item) => (
-                  <button
-                    className={`history-item ${active?.id === item.id ? "is-active" : ""}`}
-                    key={item.id}
-                    type="button"
-                    onClick={() => void openHistory(item.id)}
-                  >
-                    <strong>{item.fileName}</strong>
-                    <span>{item.status} · {new Date(item.createdAt).toLocaleDateString()}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
-        </aside>
-
+        <ControlRail
+          config={config}
+          history={history}
+          initialLoading={initialLoading}
+          file={file}
+          providers={providers}
+          ollamaModel={ollamaModel}
+          active={active}
+          error={error}
+          dragging={dragging}
+          submitting={submitting}
+          onChooseFile={chooseFile}
+          onDragging={setDragging}
+          onToggleProvider={toggleProvider}
+          onSelectOllamaModel={setOllamaModel}
+          onStart={startExtraction}
+          onOpenHistory={openHistory}
+          onReprocess={reprocess}
+          onDelete={deleteExtraction}
+        />
         <section className="metadata-workspace" aria-label="Extracted research metadata">
-          <div className="metadata-columns">
+          {active ? <RunSummary extraction={active} /> : (
+            <header className="workspace-intro">
+              <h2>Ebidens before conpidensssss.</h2>
+            </header>
+          )}
+          {active?.status === "failed" && resultEntries.length === 0 ? null : <div className="metadata-columns">
             {metadataColumns.map((fields, columnIndex) => (
               <div className="metadata-column" key={columnIndex === 0 ? "left" : "right"}>
                 {fields.map((field) => (
-                  <MetadataCard
+                  <FieldCard
                     key={field.key}
                     field={field}
                     busy={isBusy}
                     results={resultEntries}
-                    scores={scores}
-                    onRate={rateField}
+                    scores={active?.scores ?? {}}
+                    latestActions={latestActions}
+                    onRate={saveRating}
+                    onReview={saveReview}
+                    onEvidence={setEvidenceSelection}
                   />
                 ))}
               </div>
             ))}
-          </div>
-
-          {resultEntries.length > 0 && !isBusy ? (
-            <section className="save-ratings" aria-label="Save human validation ratings">
-                <div>
-                  <strong>{scoreSummary === null ? "Rate fields with the colored controls." : `Human accuracy score: ${scoreSummary}%`}</strong>
-                  <span>These ratings are your validation, not the model’s confidence.</span>
-                </div>
-                <button
-                  type="button"
-                  data-state={evaluationSaved ? "success" : Object.keys(scores).length === 0 ? "disabled" : "ready"}
-                  disabled={Object.keys(scores).length === 0}
-                  onClick={() => void saveScores()}
-                >
-                  {evaluationSaved ? "Ratings saved" : "Save ratings"}
-                </button>
-            </section>
-          ) : null}
+          </div>}
         </section>
+        {active && evidenceSelection ? (
+          <EvidenceViewer apiUrl={apiUrl()} extraction={active} selection={evidenceSelection} onClose={() => setEvidenceSelection(null)} />
+        ) : null}
       </main>
     </SkeletonTheme>
   );

@@ -71,5 +71,8 @@
   --z-sticky: 200;
 
   --rail-width: clamp(14rem, 18vw, 17rem);
+  --rating-rail-width: 2.0625rem;
+  --rating-rail-underlap: var(--space-md);
+  --history-panel-height: 20rem;
   --canvas-width: 96rem;
 }

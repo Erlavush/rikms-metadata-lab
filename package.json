@@ -6,13 +6,20 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "dev": "concurrently -k -n web,api,grobid -c cyan,magenta,yellow \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:grobid\"",
+    "dev:core": "concurrently -k -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
     "dev:api": "tsx watch server/index.ts",
+    "dev:grobid": "bash scripts/run-grobid.sh",
     "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "concurrently -k -n web,api -c cyan,magenta \"WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start\" \"tsx server/index.ts\"",
+    "start": "concurrently -k -n web,api,grobid -c cyan,magenta,yellow \"WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start\" \"tsx server/index.ts\" \"bash scripts/run-grobid.sh\"",
+    "start:core": "concurrently -k -n web,api -c cyan,magenta \"WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start\" \"tsx server/index.ts\"",
+    "setup:docling": "bash scripts/setup-docling.sh",
+    "setup:grobid": "bash scripts/setup-grobid.sh",
+    "evaluate": "tsx scripts/evaluate.ts",
+    "smoke:pipeline": "tsx scripts/smoke-pipeline.ts",
     "test": "npm run test:unit && npm run build && node --test tests/rendered-html.test.mjs",
-    "test:unit": "tsx --test server/schema.test.ts server/database.test.ts",
+    "test:unit": "tsx --test server/*.test.ts server/parsers/*.test.ts app/components/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "dependencies": {
@@ -24,6 +31,11 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-loading-skeleton": "^3.5.0",
+    "react-markdown": "^10.1.0",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

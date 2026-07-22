@@ -21,7 +21,9 @@ test("server-renders the RIKMS Metadata Lab", async () => {
   const html = await response.text();
   assert.match(html, /<title>RIKMS Metadata Lab<\/title>/i);
   assert.match(html, /RIKMS Metadata Lab/);
-  assert.match(html, /Model Lane/);
+  assert.match(html, /Model lanes/i);
+  assert.match(html, /Ebidens before conpidensssss\./i);
+  assert.doesNotMatch(html, /RIKMS Metadata Lab · pipeline 2|Upload an authorized research PDF/i);
   assert.match(html, /Extract Metadata/);
   assert.match(html, /Related Literature/);
   assert.match(html, /Lilita One/);

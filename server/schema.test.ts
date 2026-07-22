@@ -23,3 +23,12 @@ test("rejects out-of-range SDGs", () => {
     }),
   );
 });
+
+test("enforces the reviewed top-three SDG contract", () => {
+  assert.throws(() =>
+    rikmsMetadataValidator.parse({
+      ...valid,
+      suggested_sdgs: [3, 6, 11, 13].map((number) => ({ number, reason: "Document-supported goal", confidence: 0.8 })),
+    }),
+  );
+});

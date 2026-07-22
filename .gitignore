@@ -40,7 +40,12 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
 /outputs/
 /work/
+
+# optional local parser environments and binaries
+/.venv-docling/
+/.tools/

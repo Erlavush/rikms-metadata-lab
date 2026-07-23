@@ -49,3 +49,7 @@ next-env.d.ts
 # optional local parser environments and binaries
 /.venv-docling/
 /.tools/
+
+.projectmem/watch.pid
+.projectmem/watch.log
+.projectmem/structure.json
